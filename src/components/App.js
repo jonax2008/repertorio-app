@@ -23,18 +23,19 @@ export class App {
     this.norm       = s => s;
 
     this.state = {
-      ready:     false,
-      query:     '',
-      cat:       null,      // nombre de categoría activa o null (todas)
-      favOnly:   false,
-      favs:      {},        // { [id]: true }
-      current:   null,      // himno abierto en el visor
-      pageIndex: 0,
-      zoom:      1,
-      dark:      false,
-      voice:     'Ensamble',
-      playing:   false,
-      progress:  0,
+      ready:        false,
+      query:        '',
+      cat:          null,      // nombre de categoría activa o null (todas)
+      favOnly:      false,
+      favs:         {},        // { [id]: true }
+      current:      null,      // himno abierto en el visor
+      pageIndex:    0,
+      pdfPageCount: null,      // número real de páginas del PDF cargado
+      zoom:         1,
+      dark:         false,
+      voice:        'Ensamble',
+      playing:      false,
+      progress:     0,
     };
 
     this._timer = null;   // intervalo del reproductor simulado
@@ -136,8 +137,10 @@ export class App {
 
       openViewer: (hymn) => {
         clearInterval(this._timer);
-        this.setState({ current: hymn, pageIndex: 0, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
+        this.setState({ current: hymn, pageIndex: 0, pdfPageCount: null, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
       },
+
+      setPdfPageCount: (n) => this.setState({ pdfPageCount: n }),
 
       closeViewer: () => {
         clearInterval(this._timer);
@@ -182,11 +185,16 @@ export class App {
       prevPage: () => this.setState(s => ({ pageIndex: Math.max(0, s.pageIndex - 1) })),
 
       nextPage: () => {
-        const cur = this.state.current;
-        if (!cur) return;
-        const idx  = this.HYMNS.findIndex(h => h.id === cur.id);
-        const next = this.HYMNS[idx + 1];
-        const count = Math.max(1, next ? (next.page - cur.page) : 2);
+        const { current, pdfPageCount } = this.state;
+        if (!current) return;
+        let count;
+        if (current.pdf && pdfPageCount) {
+          count = pdfPageCount;
+        } else {
+          const idx  = this.HYMNS.findIndex(h => h.id === current.id);
+          const next = this.HYMNS[idx + 1];
+          count = Math.max(1, next ? (next.page - current.page) : 2);
+        }
         this.setState(s => ({ pageIndex: Math.min(count - 1, s.pageIndex + 1) }));
       },
 
@@ -241,8 +249,10 @@ export class App {
       const idx   = HYMNS.findIndex(h => h.id === cur.id);
       const prev  = HYMNS[idx - 1] || null;
       const next  = HYMNS[idx + 1] || null;
-      const hasPdf = !!cur.pdf;
-      const pageCount = hasPdf ? 1 : Math.max(1, next ? (next.page - cur.page) : 2);
+      const hasPdf    = !!cur.pdf;
+      const pageCount = hasPdf
+        ? (S.pdfPageCount || 1)
+        : Math.max(1, next ? (next.page - cur.page) : 2);
       const pi    = Math.min(S.pageIndex, pageCount - 1);
 
       viewer = {

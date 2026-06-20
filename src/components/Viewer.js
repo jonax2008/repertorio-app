@@ -63,38 +63,114 @@ const PLUS_ICON = `<svg width="16" height="16" viewBox="0 0 24 24"
   <line x1="5" y1="12" x2="19" y2="12"></line>
 </svg>`;
 
-// ── Component ───────────────────────────────────────────────────────
+// ── Component ────────────────────────────────────────────────────────
 export class Viewer extends Component {
   constructor(el, actions) {
     super(el);
-    this.actions = actions;
+    this.actions  = actions;
+    this._pdfDoc  = null;   // PDF.js document en caché
+    this._pdfUrl  = null;   // URL del documento cacheado
+    this._prevVm  = null;   // view-model del render anterior
+    this._renderN = 0;      // id monotónico para cancelar renders supersedidos
   }
 
   render(vm) {
-    const v = vm.viewer;
-    const isOpen = !!v;
-
-    // Sólo re-renderizar cuando el visor está abierto o acaba de cerrarse
+    const v       = vm.viewer;
+    const isOpen  = !!v;
     const wasOpen = this.el.classList.contains('viewer');
+
     if (!isOpen && !wasOpen) return;
 
     this.vm = vm;
 
     if (!isOpen) {
-      // Cerrar: limpiar y ocultar
       this.el.className = '';
       this.el.innerHTML = '';
+      this._pdfDoc      = null;
+      this._pdfUrl      = null;
+      this._prevVm      = null;
       return;
     }
 
+    const prev        = this._prevVm;
+    const hymnChanged = !prev || prev.hymn.id !== v.hymn.id;
+
+    // ── Render completo: primera apertura o cambio de himno ──────────
+    if (!wasOpen || hymnChanged) {
+      this.el.className  = `viewer open${v.dark ? ' dark' : ''}`;
+      this.el.innerHTML  = this._html(v);
+      this._bindAll(v);
+      if (v.hasPdf) this._loadAndRenderPage(v, null);
+      this._prevVm = v;
+      return;
+    }
+
+    // ── Actualizaciones parciales ────────────────────────────────────
     this.el.className = `viewer open${v.dark ? ' dark' : ''}`;
-    this.el.innerHTML = this._html(v);
-    this._bind(v);
+
+    // Modo oscuro — clase ya actualizada; sincronizar icono y filtro
+    if (prev.dark !== v.dark) {
+      const btn = this.$('#v-dark');
+      if (btn) btn.innerHTML = v.dark ? SUN_ICON : MOON_ICON;
+
+      if (v.hasPdf) {
+        const canvas = this.$('#pdf-canvas');
+        if (canvas) canvas.style.filter = v.dark
+          ? 'invert(0.9) hue-rotate(180deg) brightness(1.05)' : 'none';
+      } else {
+        const wrap = this.$('#sheet-wrap');
+        if (wrap) wrap.style.filter = v.dark
+          ? 'invert(0.9) hue-rotate(180deg) brightness(1.05)' : 'none';
+      }
+    }
+
+    // Favorito
+    if (prev.isFav !== v.isFav) {
+      const btn = this.$('#v-fav');
+      if (btn) btn.innerHTML = v.isFav ? STAR_FILL : STAR_NONE;
+    }
+
+    // Cambio de página
+    if (prev.pageNum !== v.pageNum) {
+      const dir = v.pageNum > prev.pageNum ? 'right' : 'left';
+      if (v.hasPdf) {
+        this._loadAndRenderPage(v, dir);
+      } else {
+        const pn = this.$('.placeholder-page-num');
+        if (pn) pn.textContent = v.repPage;
+      }
+    }
+
+    // Cambio de zoom
+    if (prev.zoom !== v.zoom) {
+      if (v.hasPdf) {
+        this._loadAndRenderPage(v, null);
+      } else {
+        const wrap = this.$('#sheet-wrap');
+        if (wrap) wrap.style.width = `${v.sheetW}px`;
+      }
+      const zoomLbl = this.$('.zoom-label');
+      if (zoomLbl) zoomLbl.textContent = `${Math.round(v.zoom * 100)}%`;
+    }
+
+    // Conteo de páginas (recibido async desde PDF.js)
+    if (prev.pageCount !== v.pageCount || prev.canPrevPage !== v.canPrevPage || prev.canNextPage !== v.canNextPage) {
+      this._patchPageNav(v);
+    }
+
+    // Audio / voz / progreso
+    const audioChanged = prev.playing !== v.playing
+      || Math.abs(prev.progress - v.progress) > 0.1
+      || prev.voice !== v.voice;
+    if (audioChanged) this._patchAudio(v);
+
+    this._prevVm = v;
   }
 
-  // Sobreescribimos render completo; html/bind base no se usan
+  // Base no usada — render() está completamente sobreescrito
   html() { return ''; }
 
+  // ── HTML completo ─────────────────────────────────────────────────
   _html(v) {
     return `
       ${this._topbar(v)}
@@ -103,9 +179,8 @@ export class Viewer extends Component {
     `;
   }
 
-  // ── Top bar ──────────────────────────────────────────────────────
+  // ── Top bar ───────────────────────────────────────────────────────
   _topbar(v) {
-    const darkToggleIcon = v.dark ? SUN_ICON : MOON_ICON;
     return `
       <div class="viewer-topbar">
         <button class="viewer-btn viewer-btn--back" id="v-close">
@@ -121,28 +196,26 @@ export class Viewer extends Component {
           ${v.isFav ? STAR_FILL : STAR_NONE}
         </button>
         <button class="viewer-btn viewer-btn--icon" id="v-dark" aria-label="Modo escenario">
-          ${darkToggleIcon}
+          ${v.dark ? SUN_ICON : MOON_ICON}
         </button>
       </div>
     `;
   }
 
-  // ── Sheet ────────────────────────────────────────────────────────
+  // ── Sheet ─────────────────────────────────────────────────────────
   _sheet(v) {
-    const content = v.hasPdf ? this._pdfSheet(v) : this._placeholderSheet(v);
+    if (v.hasPdf) {
+      return `
+        <div class="viewer-sheet">
+          <canvas id="pdf-canvas"></canvas>
+        </div>
+      `;
+    }
     return `
       <div class="viewer-sheet">
-        <div style="filter:${v.sheetFilter}; ${v.hasPdf ? 'width:100%;height:100%;align-self:stretch;' : `width:${v.sheetW}px;flex:none;`}">
-          ${content}
+        <div id="sheet-wrap" style="width:${v.sheetW}px; flex:none; filter:${v.sheetFilter}">
+          ${this._placeholderSheet(v)}
         </div>
-      </div>
-    `;
-  }
-
-  _pdfSheet(v) {
-    return `
-      <div class="sheet-pdf">
-        <iframe src="${v.pdfUrl}" title="Partitura PDF"></iframe>
       </div>
     `;
   }
@@ -173,7 +246,7 @@ export class Viewer extends Component {
     `;
   }
 
-  // ── Bottom bar ───────────────────────────────────────────────────
+  // ── Bottom bar ────────────────────────────────────────────────────
   _bottom(v) {
     return `
       <div class="viewer-bottom">
@@ -185,22 +258,21 @@ export class Viewer extends Component {
   }
 
   _audioPlayer(v) {
-    const playIcon  = v.playing ? PAUSE_ICON : PLAY_ICON;
-    const progress  = v.progress.toFixed(1);
-    const ytLink    = v.youtube
+    const ytLink = v.youtube
       ? `<a href="${v.youtube}" target="_blank" rel="noopener">▷ Video-partitura YouTube</a>`
       : `<span style="opacity:.5">▷ Video-partitura YouTube</span>`;
-
     return `
       <div class="audio-player">
-        <button class="audio-play-btn" id="v-play">${playIcon}</button>
+        <button class="audio-play-btn" id="v-play">
+          ${v.playing ? PAUSE_ICON : PLAY_ICON}
+        </button>
         <div class="audio-track-wrap">
           <div class="audio-labels">
             <span>Audio guía · <b>${v.voice}</b></span>
             <span class="audio-yt">${ytLink}</span>
           </div>
           <div class="audio-track">
-            <div class="audio-progress" style="width:${progress}%"></div>
+            <div class="audio-progress" style="width:${v.progress.toFixed(1)}%"></div>
           </div>
         </div>
       </div>
@@ -214,49 +286,42 @@ export class Viewer extends Component {
       </button>
     `).join('');
 
-    // Controles de página y zoom sólo en modo placeholder (sin PDF real)
-    const pageAndZoom = !v.hasPdf ? `
-      <div class="page-nav">
-        <button class="page-nav-btn" id="v-prev-page" ${!v.canPrevPage ? 'disabled' : ''}>
-          ${PREV_ICON}
-        </button>
-        <span class="page-nav-label">${v.pageNum} / ${v.pageCount}</span>
-        <button class="page-nav-btn" id="v-next-page" ${!v.canNextPage ? 'disabled' : ''}>
-          ${NEXT_ICON}
-        </button>
-      </div>
-      <div class="zoom-controls">
-        <button class="zoom-btn" id="v-zoom-out">${MINUS_ICON}</button>
-        <span class="zoom-label">${Math.round(v.zoom * 100)}%</span>
-        <button class="zoom-btn" id="v-zoom-in">${PLUS_ICON}</button>
-      </div>
-    ` : `<span class="pdf-hint">PDF real · pellizca o desplaza para zoom</span>`;
-
     return `
       <div class="controls-row">
         <div class="voice-selector">${voicesHtml}</div>
-        ${pageAndZoom}
+        <div class="page-nav">
+          <button class="page-nav-btn" id="v-prev-page" ${!v.canPrevPage ? 'disabled' : ''}>
+            ${PREV_ICON}
+          </button>
+          <span class="page-nav-label">${v.pageNum} / ${v.pageCount}</span>
+          <button class="page-nav-btn" id="v-next-page" ${!v.canNextPage ? 'disabled' : ''}>
+            ${NEXT_ICON}
+          </button>
+        </div>
+        <div class="zoom-controls">
+          <button class="zoom-btn" id="v-zoom-out">${MINUS_ICON}</button>
+          <span class="zoom-label">${Math.round(v.zoom * 100)}%</span>
+          <button class="zoom-btn" id="v-zoom-in">${PLUS_ICON}</button>
+        </div>
       </div>
     `;
   }
 
   _hymnNav(v) {
-    const prevTitle = v.prev ? v.prev.title : '—';
-    const nextTitle = v.next ? v.next.title : '—';
     return `
       <div class="hymn-nav">
         <button class="hymn-nav-btn" id="v-prev-hymn" ${!v.prev ? 'disabled' : ''}>
-          ${PREV_ICON}<span>${prevTitle}</span>
+          ${PREV_ICON}<span>${v.prev ? v.prev.title : '—'}</span>
         </button>
         <button class="hymn-nav-btn" id="v-next-hymn" ${!v.next ? 'disabled' : ''}>
-          <span>${nextTitle}</span>${NEXT_ICON}
+          <span>${v.next ? v.next.title : '—'}</span>${NEXT_ICON}
         </button>
       </div>
     `;
   }
 
-  // ── Event binding ────────────────────────────────────────────────
-  _bind(v) {
+  // ── Event binding (solo en render completo) ───────────────────────
+  _bindAll(v) {
     const on = (id, fn) => {
       const el = this.$(`#${id}`);
       if (el) el.addEventListener('click', fn);
@@ -276,5 +341,90 @@ export class Viewer extends Component {
     this.$$('.voice-btn').forEach(btn => {
       btn.addEventListener('click', () => this.actions.setVoice(btn.dataset.voice));
     });
+  }
+
+  // ── Parches DOM dirigidos ─────────────────────────────────────────
+  _patchAudio(v) {
+    const bar = this.$('.audio-progress');
+    if (bar) bar.style.width = `${v.progress.toFixed(1)}%`;
+
+    const btn = this.$('#v-play');
+    if (btn) btn.innerHTML = v.playing ? PAUSE_ICON : PLAY_ICON;
+
+    // Etiqueta de voz activa
+    const lbl = this.$('.audio-labels > span:first-child');
+    if (lbl) lbl.innerHTML = `Audio guía · <b>${v.voice}</b>`;
+
+    // Resaltar botón de voz activo
+    this.$$('.voice-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.voice === v.voice);
+    });
+  }
+
+  _patchPageNav(v) {
+    const prevBtn = this.$('#v-prev-page');
+    const nextBtn = this.$('#v-next-page');
+    const lbl     = this.$('.page-nav-label');
+    if (prevBtn) prevBtn.disabled = !v.canPrevPage;
+    if (nextBtn) nextBtn.disabled = !v.canNextPage;
+    if (lbl)     lbl.textContent  = `${v.pageNum} / ${v.pageCount}`;
+  }
+
+  // ── PDF.js: carga y render de página ─────────────────────────────
+  async _loadAndRenderPage(v, direction) {
+    // ID único para esta solicitud; cancela renders anteriores si llegó otro
+    this._renderN++;
+    const myN = this._renderN;
+
+    try {
+      // Cargar documento si cambió la URL
+      if (v.hymn.pdf !== this._pdfUrl) {
+        this._pdfDoc = await window.pdfjsLib.getDocument(v.hymn.pdf).promise;
+        this._pdfUrl = v.hymn.pdf;
+        // Informar el número real de páginas al estado global
+        this.actions.setPdfPageCount(this._pdfDoc.numPages);
+      }
+
+      if (myN !== this._renderN) return;
+
+      const canvas = this.$('#pdf-canvas');
+      if (!canvas || !this._pdfDoc) return;
+
+      const page = await this._pdfDoc.getPage(v.pageNum);
+      if (myN !== this._renderN) return;
+
+      // Escala: ajustar al área disponible respetando el zoom del usuario
+      const sheet = this.$('.viewer-sheet');
+      const rect  = sheet ? sheet.getBoundingClientRect() : { width: 640, height: 800 };
+      const cw    = rect.width  - 48;
+      const ch    = rect.height - 32;
+
+      const vp0      = page.getViewport({ scale: 1 });
+      const fitScale = Math.min(cw / vp0.width, ch / vp0.height);
+      const viewport = page.getViewport({ scale: fitScale * v.zoom });
+
+      canvas.width  = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.filter = v.dark
+        ? 'invert(0.9) hue-rotate(180deg) brightness(1.05)' : 'none';
+
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      if (myN !== this._renderN) return;
+
+      // Animación de deslizamiento horizontal al cambiar página
+      if (direction) {
+        const cls = direction === 'right' ? 'slide-from-right' : 'slide-from-left';
+        canvas.classList.remove('slide-from-right', 'slide-from-left');
+        void canvas.offsetWidth; // forzar reflow para reiniciar la animación
+        // Cortar overflow brevemente para que el slide no se vea fuera del marco
+        if (sheet) {
+          sheet.style.overflow = 'hidden';
+          setTimeout(() => { sheet.style.overflow = ''; }, 260);
+        }
+        canvas.classList.add(cls);
+      }
+    } catch (err) {
+      console.error('[PDF.js]', err);
+    }
   }
 }

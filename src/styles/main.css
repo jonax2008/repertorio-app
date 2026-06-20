@@ -541,8 +541,8 @@ button { font-family: inherit; }
   flex: none;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px clamp(12px, 3vw, 24px);
+  gap: 10px;
+  padding: 7px clamp(10px, 2.5vw, 20px);
   border-bottom: 1px solid var(--v-border);
 }
 
@@ -550,20 +550,26 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   border: 1px solid var(--v-border);
   background: transparent;
   color: inherit;
   cursor: pointer;
-  height: 42px;
+  height: 36px;
   border-radius: var(--r-btn);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  transition: opacity .15s;
+  transition: background .15s, color .15s, border-color .15s, opacity .15s;
 }
 
-.viewer-btn--back { padding: 0 14px; }
-.viewer-btn--icon { width: 42px; flex: none; }
+.viewer-btn.active {
+  background: var(--gold);
+  color: #fff;
+  border-color: var(--gold);
+}
+
+.viewer-btn--back { padding: 0 12px; }
+.viewer-btn--icon { width: 36px; flex: none; }
 
 .viewer-center {
   flex: 1;
@@ -573,7 +579,7 @@ button { font-family: inherit; }
 
 .viewer-title {
   font-family: 'Cormorant Garamond', serif;
-  font-size: clamp(20px, 3.2vw, 26px);
+  font-size: clamp(16px, 2.4vw, 20px);
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
@@ -582,16 +588,16 @@ button { font-family: inherit; }
 }
 
 .viewer-meta {
-  font-size: 11px;
-  opacity: .62;
-  margin-top: 4px;
+  font-size: 10.5px;
+  opacity: .58;
+  margin-top: 2px;
 }
 
 /* Viewer sheet area */
 .viewer-sheet {
   flex: 1;
   overflow: auto;
-  padding: 24px clamp(12px, 3vw, 32px) 28px;
+  padding: 16px clamp(10px, 2.5vw, 28px) 20px;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -729,7 +735,23 @@ button { font-family: inherit; }
 .viewer-bottom {
   flex: none;
   border-top: 1px solid var(--v-border);
-  padding: 10px clamp(12px, 3vw, 24px) max(10px, env(safe-area-inset-bottom));
+  padding: 8px clamp(12px, 3vw, 24px) max(8px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Audio panel (collapsible) */
+.audio-panel {
+  display: none;
+  flex-direction: column;
+  gap: 7px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--v-border);
+}
+
+.audio-panel--open {
+  display: flex;
 }
 
 /* Audio player */
@@ -737,7 +759,6 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
 }
 
 .audio-play-btn {
@@ -788,18 +809,18 @@ button { font-family: inherit; }
   transition: width .2s linear;
 }
 
-/* Controls row: voices + page nav + zoom */
+/* Controls row: page nav + zoom + audio toggle */
 .controls-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  justify-content: center;
 }
 
 .voice-selector {
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  flex: 1;
   scrollbar-width: none;
 }
 
@@ -894,7 +915,6 @@ button { font-family: inherit; }
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 10px;
 }
 
 .hymn-nav-btn {

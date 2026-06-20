@@ -63,15 +63,23 @@ const PLUS_ICON = `<svg width="16" height="16" viewBox="0 0 24 24"
   <line x1="5" y1="12" x2="19" y2="12"></line>
 </svg>`;
 
+const HEADPHONES_ICON = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+  <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"></path>
+  <path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+</svg>`;
+
 // ── Component ────────────────────────────────────────────────────────
 export class Viewer extends Component {
   constructor(el, actions) {
     super(el);
-    this.actions  = actions;
-    this._pdfDoc  = null;   // PDF.js document en caché
-    this._pdfUrl  = null;   // URL del documento cacheado
-    this._prevVm  = null;   // view-model del render anterior
-    this._renderN = 0;      // id monotónico para cancelar renders supersedidos
+    this.actions    = actions;
+    this._pdfDoc    = null;
+    this._pdfUrl    = null;
+    this._prevVm    = null;
+    this._renderN   = 0;
+    this._audioOpen = false;
   }
 
   render(vm) {
@@ -84,11 +92,12 @@ export class Viewer extends Component {
     this.vm = vm;
 
     if (!isOpen) {
-      this.el.className = '';
-      this.el.innerHTML = '';
-      this._pdfDoc      = null;
-      this._pdfUrl      = null;
-      this._prevVm      = null;
+      this.el.className  = '';
+      this.el.innerHTML  = '';
+      this._pdfDoc       = null;
+      this._pdfUrl       = null;
+      this._prevVm       = null;
+      this._audioOpen    = false;
       return;
     }
 
@@ -248,9 +257,18 @@ export class Viewer extends Component {
 
   // ── Bottom bar ────────────────────────────────────────────────────
   _bottom(v) {
+    const voicesHtml = v.voices.map(voice => `
+      <button class="voice-btn${voice.active ? ' active' : ''}" data-voice="${voice.name}">
+        ${voice.name}
+      </button>
+    `).join('');
+
     return `
       <div class="viewer-bottom">
-        ${this._audioPlayer(v)}
+        <div class="audio-panel${this._audioOpen ? ' audio-panel--open' : ''}">
+          ${this._audioPlayer(v)}
+          <div class="voice-selector">${voicesHtml}</div>
+        </div>
         ${this._controlsRow(v)}
         ${this._hymnNav(v)}
       </div>
@@ -259,8 +277,8 @@ export class Viewer extends Component {
 
   _audioPlayer(v) {
     const ytLink = v.youtube
-      ? `<a href="${v.youtube}" target="_blank" rel="noopener">▷ Video-partitura YouTube</a>`
-      : `<span style="opacity:.5">▷ Video-partitura YouTube</span>`;
+      ? `<a href="${v.youtube}" target="_blank" rel="noopener">▷ YouTube</a>`
+      : `<span style="opacity:.5">▷ YouTube</span>`;
     return `
       <div class="audio-player">
         <button class="audio-play-btn" id="v-play">
@@ -280,15 +298,8 @@ export class Viewer extends Component {
   }
 
   _controlsRow(v) {
-    const voicesHtml = v.voices.map(voice => `
-      <button class="voice-btn${voice.active ? ' active' : ''}" data-voice="${voice.name}">
-        ${voice.name}
-      </button>
-    `).join('');
-
     return `
       <div class="controls-row">
-        <div class="voice-selector">${voicesHtml}</div>
         <div class="page-nav">
           <button class="page-nav-btn" id="v-prev-page" ${!v.canPrevPage ? 'disabled' : ''}>
             ${PREV_ICON}
@@ -303,6 +314,9 @@ export class Viewer extends Component {
           <span class="zoom-label">${Math.round(v.zoom * 100)}%</span>
           <button class="zoom-btn" id="v-zoom-in">${PLUS_ICON}</button>
         </div>
+        <button class="viewer-btn viewer-btn--icon${this._audioOpen ? ' active' : ''}" id="v-audio-toggle" aria-label="Guías de audio">
+          ${HEADPHONES_ICON}
+        </button>
       </div>
     `;
   }
@@ -327,16 +341,23 @@ export class Viewer extends Component {
       if (el) el.addEventListener('click', fn);
     };
 
-    on('v-close',     () => this.actions.closeViewer());
-    on('v-fav',       () => this.actions.toggleFav(v.hymn.id));
-    on('v-dark',      () => this.actions.toggleDark());
-    on('v-play',      () => this.actions.togglePlay());
-    on('v-prev-page', () => this.actions.prevPage());
-    on('v-next-page', () => this.actions.nextPage());
-    on('v-zoom-in',   () => this.actions.zoomIn());
-    on('v-zoom-out',  () => this.actions.zoomOut());
-    on('v-prev-hymn', () => this.actions.prevHymn());
-    on('v-next-hymn', () => this.actions.nextHymn());
+    on('v-close',        () => this.actions.closeViewer());
+    on('v-fav',          () => this.actions.toggleFav(v.hymn.id));
+    on('v-dark',         () => this.actions.toggleDark());
+    on('v-play',         () => this.actions.togglePlay());
+    on('v-prev-page',    () => this.actions.prevPage());
+    on('v-next-page',    () => this.actions.nextPage());
+    on('v-zoom-in',      () => this.actions.zoomIn());
+    on('v-zoom-out',     () => this.actions.zoomOut());
+    on('v-prev-hymn',    () => this.actions.prevHymn());
+    on('v-next-hymn',    () => this.actions.nextHymn());
+    on('v-audio-toggle', () => {
+      this._audioOpen = !this._audioOpen;
+      const panel = this.$('.audio-panel');
+      const btn   = this.$('#v-audio-toggle');
+      if (panel) panel.classList.toggle('audio-panel--open', this._audioOpen);
+      if (btn)   btn.classList.toggle('active', this._audioOpen);
+    });
 
     this.$$('.voice-btn').forEach(btn => {
       btn.addEventListener('click', () => this.actions.setVoice(btn.dataset.voice));
@@ -399,12 +420,15 @@ export class Viewer extends Component {
       const cw    = rect.width  - 48;
       const ch    = rect.height - 32;
 
+      const dpr      = window.devicePixelRatio || 1;
       const vp0      = page.getViewport({ scale: 1 });
       const fitScale = Math.min(cw / vp0.width, ch / vp0.height);
-      const viewport = page.getViewport({ scale: fitScale * v.zoom });
+      const viewport = page.getViewport({ scale: fitScale * v.zoom * dpr });
 
       canvas.width  = viewport.width;
       canvas.height = viewport.height;
+      canvas.style.width  = `${Math.floor(viewport.width  / dpr)}px`;
+      canvas.style.height = `${Math.floor(viewport.height / dpr)}px`;
       canvas.style.filter = v.dark
         ? 'invert(0.9) hue-rotate(180deg) brightness(1.05)' : 'none';
 

@@ -944,6 +944,99 @@ button { font-family: inherit; }
   min-width: 0;
 }
 
+/* ===== VIEWER FULLSCREEN MODE ===== */
+.viewer--fullscreen .viewer-topbar,
+.viewer--fullscreen .viewer-bottom { display: none; }
+
+.viewer--fullscreen .viewer-sheet {
+  padding: 6px;
+  overflow: hidden;
+  align-items: center;
+}
+
+.viewer-sheet { position: relative; }
+
+.viewer-fs-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.viewer--fullscreen .viewer-fs-overlay { display: block; }
+.viewer-fs-overlay > * { pointer-events: auto; }
+
+.viewer-fs-exit {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0,0,0,.48);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.22);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.viewer-fs-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(0,0,0,.56) 0%, transparent 100%);
+}
+
+.viewer-fs-page-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.viewer-fs-page-nav .page-nav-btn {
+  background: rgba(255,255,255,.14);
+  border-color: rgba(255,255,255,.28);
+  color: #fff;
+}
+
+.viewer-fs-page-nav .page-nav-btn:disabled { opacity: .28; cursor: default; }
+
+.viewer-fs-page-nav .page-nav-label {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 52px;
+  text-align: center;
+  opacity: 1;
+}
+
+.viewer-fs-hymn-nav {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 520px;
+}
+
+.viewer-fs-hymn-nav .hymn-nav-btn {
+  background: rgba(255,255,255,.12);
+  border-color: rgba(255,255,255,.22);
+  color: #fff;
+}
+
+.viewer-fs-hymn-nav .hymn-nav-btn:disabled { opacity: .28; cursor: default; }
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 520px) {
   .az-rail { display: none; }

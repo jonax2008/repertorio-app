@@ -70,16 +70,33 @@ const HEADPHONES_ICON = `<svg width="17" height="17" viewBox="0 0 24 24" fill="n
   <path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
 </svg>`;
 
+const EXPAND_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="15 3 21 3 21 9"></polyline>
+  <polyline points="9 21 3 21 3 15"></polyline>
+  <line x1="21" y1="3" x2="14" y2="10"></line>
+  <line x1="3" y1="21" x2="10" y2="14"></line>
+</svg>`;
+
+const COMPRESS_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="4 14 10 14 10 20"></polyline>
+  <polyline points="20 10 14 10 14 4"></polyline>
+  <line x1="10" y1="14" x2="3" y2="21"></line>
+  <line x1="21" y1="3" x2="14" y2="10"></line>
+</svg>`;
+
 // ── Component ────────────────────────────────────────────────────────
 export class Viewer extends Component {
   constructor(el, actions) {
     super(el);
     this.actions    = actions;
-    this._pdfDoc    = null;
-    this._pdfUrl    = null;
-    this._prevVm    = null;
-    this._renderN   = 0;
-    this._audioOpen = false;
+    this._pdfDoc      = null;
+    this._pdfUrl      = null;
+    this._prevVm      = null;
+    this._renderN     = 0;
+    this._audioOpen   = false;
+    this._fullscreen  = false;
   }
 
   render(vm) {
@@ -106,7 +123,7 @@ export class Viewer extends Component {
 
     // ── Render completo: primera apertura o cambio de himno ──────────
     if (!wasOpen || hymnChanged) {
-      this.el.className  = `viewer open${v.dark ? ' dark' : ''}`;
+      this.el.className  = `viewer open${v.dark ? ' dark' : ''}${this._fullscreen ? ' viewer--fullscreen' : ''}`;
       this.el.innerHTML  = this._html(v);
       this._bindAll(v);
       if (v.hasPdf) this._loadAndRenderPage(v, null);
@@ -115,7 +132,7 @@ export class Viewer extends Component {
     }
 
     // ── Actualizaciones parciales ────────────────────────────────────
-    this.el.className = `viewer open${v.dark ? ' dark' : ''}`;
+    this.el.className = `viewer open${v.dark ? ' dark' : ''}${this._fullscreen ? ' viewer--fullscreen' : ''}`;
 
     // Modo oscuro — clase ya actualizada; sincronizar icono y filtro
     if (prev.dark !== v.dark) {
@@ -217,6 +234,7 @@ export class Viewer extends Component {
       return `
         <div class="viewer-sheet">
           <canvas id="pdf-canvas"></canvas>
+          ${this._fsOverlay(v)}
         </div>
       `;
     }
@@ -224,6 +242,35 @@ export class Viewer extends Component {
       <div class="viewer-sheet">
         <div id="sheet-wrap" style="width:${v.sheetW}px; flex:none; filter:${v.sheetFilter}">
           ${this._placeholderSheet(v)}
+        </div>
+      </div>
+    `;
+  }
+
+  _fsOverlay(v) {
+    return `
+      <div class="viewer-fs-overlay">
+        <button class="viewer-fs-exit" id="v-exit-fs" aria-label="Salir de pantalla completa">
+          ${COMPRESS_ICON}
+        </button>
+        <div class="viewer-fs-bottom">
+          <div class="viewer-fs-page-nav">
+            <button class="page-nav-btn" id="v-fs-prev-page" ${!v.canPrevPage ? 'disabled' : ''}>
+              ${PREV_ICON}
+            </button>
+            <span class="page-nav-label">${v.pageNum} / ${v.pageCount}</span>
+            <button class="page-nav-btn" id="v-fs-next-page" ${!v.canNextPage ? 'disabled' : ''}>
+              ${NEXT_ICON}
+            </button>
+          </div>
+          <div class="viewer-fs-hymn-nav">
+            <button class="hymn-nav-btn" id="v-fs-prev-hymn" ${!v.prev ? 'disabled' : ''}>
+              ${PREV_ICON}<span>${v.prev ? v.prev.title : '—'}</span>
+            </button>
+            <button class="hymn-nav-btn" id="v-fs-next-hymn" ${!v.next ? 'disabled' : ''}>
+              <span>${v.next ? v.next.title : '—'}</span>${NEXT_ICON}
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -314,6 +361,9 @@ export class Viewer extends Component {
           <span class="zoom-label">${Math.round(v.zoom * 100)}%</span>
           <button class="zoom-btn" id="v-zoom-in">${PLUS_ICON}</button>
         </div>
+        <button class="viewer-btn viewer-btn--icon" id="v-fullscreen" aria-label="Pantalla completa">
+          ${EXPAND_ICON}
+        </button>
         <button class="viewer-btn viewer-btn--icon${this._audioOpen ? ' active' : ''}" id="v-audio-toggle" aria-label="Guías de audio">
           ${HEADPHONES_ICON}
         </button>
@@ -351,6 +401,29 @@ export class Viewer extends Component {
     on('v-zoom-out',     () => this.actions.zoomOut());
     on('v-prev-hymn',    () => this.actions.prevHymn());
     on('v-next-hymn',    () => this.actions.nextHymn());
+    on('v-fullscreen', () => {
+      this._fullscreen = !this._fullscreen;
+      this.el.classList.toggle('viewer--fullscreen', this._fullscreen);
+      const btn = this.$('#v-fullscreen');
+      if (btn) btn.innerHTML = this._fullscreen ? COMPRESS_ICON : EXPAND_ICON;
+      if (this.vm?.viewer?.hasPdf)
+        requestAnimationFrame(() => this._loadAndRenderPage(this.vm.viewer, null));
+    });
+
+    on('v-exit-fs', () => {
+      this._fullscreen = false;
+      this.el.classList.remove('viewer--fullscreen');
+      const btn = this.$('#v-fullscreen');
+      if (btn) btn.innerHTML = EXPAND_ICON;
+      if (this.vm?.viewer?.hasPdf)
+        requestAnimationFrame(() => this._loadAndRenderPage(this.vm.viewer, null));
+    });
+
+    on('v-fs-prev-page',  () => this.actions.prevPage());
+    on('v-fs-next-page',  () => this.actions.nextPage());
+    on('v-fs-prev-hymn',  () => this.actions.prevHymn());
+    on('v-fs-next-hymn',  () => this.actions.nextHymn());
+
     on('v-audio-toggle', () => {
       this._audioOpen = !this._audioOpen;
       const panel = this.$('.audio-panel');
@@ -385,10 +458,17 @@ export class Viewer extends Component {
   _patchPageNav(v) {
     const prevBtn = this.$('#v-prev-page');
     const nextBtn = this.$('#v-next-page');
-    const lbl     = this.$('.page-nav-label');
+    const lbl     = this.$('.controls-row .page-nav-label');
     if (prevBtn) prevBtn.disabled = !v.canPrevPage;
     if (nextBtn) nextBtn.disabled = !v.canNextPage;
     if (lbl)     lbl.textContent  = `${v.pageNum} / ${v.pageCount}`;
+
+    const fsPrev = this.$('#v-fs-prev-page');
+    const fsNext = this.$('#v-fs-next-page');
+    const fsLbl  = this.$('.viewer-fs-page-nav .page-nav-label');
+    if (fsPrev) fsPrev.disabled = !v.canPrevPage;
+    if (fsNext) fsNext.disabled = !v.canNextPage;
+    if (fsLbl)  fsLbl.textContent = `${v.pageNum} / ${v.pageCount}`;
   }
 
   // ── PDF.js: carga y render de página ─────────────────────────────

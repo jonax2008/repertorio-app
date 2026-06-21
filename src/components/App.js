@@ -38,13 +38,35 @@ export class App {
       progress:     0,
     };
 
-    this._timer = null;   // intervalo del reproductor simulado
+    this._timer = null;
+    this._audio = new Audio();
+    this._currentAudioUrl = null;
+    this._audio.addEventListener('timeupdate', () => {
+      if (!this._audio.duration) return;
+      this.setState({ progress: (this._audio.currentTime / this._audio.duration) * 100 });
+    });
+    this._audio.addEventListener('ended', () => {
+      this._currentAudioUrl = null;
+      this.setState({ progress: 100, playing: false });
+    });
 
     // Componentes (se instancian después de cargar datos)
     this.header    = null;
     this.toolbar   = null;
     this.hymnIndex = null;
     this.viewer    = null;
+  }
+
+  // ─── Helpers de audio ────────────────────────────────────────────
+
+  _audioUrlFor(hymn, voice) {
+    return hymn?.audios?.find(a => a.voice === voice.toLowerCase())?.url || null;
+  }
+
+  _stopAudio() {
+    clearInterval(this._timer);
+    this._audio.pause();
+    this._currentAudioUrl = null;
   }
 
   // ─── Ciclo de vida ───────────────────────────────────────────────
@@ -136,40 +158,66 @@ export class App {
       }),
 
       openViewer: (hymn) => {
-        clearInterval(this._timer);
+        this._stopAudio();
         this.setState({ current: hymn, pageIndex: 0, pdfPageCount: null, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
       },
 
       setPdfPageCount: (n) => this.setState({ pdfPageCount: n }),
 
       closeViewer: () => {
-        clearInterval(this._timer);
+        this._stopAudio();
         this.setState({ current: null, playing: false });
       },
 
       toggleDark: () => this.setState(s => ({ dark: !s.dark })),
 
-      setVoice: (v) => this.setState({ voice: v, progress: 0 }),
-
-      togglePlay: () => this.setState(s => {
-        const playing = !s.playing;
+      setVoice: (v) => {
         clearInterval(this._timer);
-        if (playing) {
-          this._timer = setInterval(() => {
-            this.setState(st => {
-              const p = st.progress + 0.7;
-              if (p >= 100) { clearInterval(this._timer); return { progress: 100, playing: false }; }
-              return { progress: p };
-            });
-          }, 90);
+        this._audio.pause();
+        this._currentAudioUrl = null;
+        this.setState({ voice: v, progress: 0, playing: false });
+        const url = this._audioUrlFor(this.state.current, v);
+        if (url) {
+          this._audio.src = url;
+          this._currentAudioUrl = url;
+          this._audio.play().catch(e => console.error('[Audio]', e));
+          this.setState({ playing: true });
         }
-        return { playing };
-      }),
+      },
+
+      togglePlay: () => {
+        const s = this.state;
+        const playing = !s.playing;
+        if (playing) {
+          const url = this._audioUrlFor(s.current, s.voice);
+          if (url) {
+            if (this._currentAudioUrl !== url) {
+              this._audio.src = url;
+              this._currentAudioUrl = url;
+            }
+            this._audio.play().catch(e => console.error('[Audio]', e));
+          } else {
+            // Fallback simulado para himnos sin audio real
+            clearInterval(this._timer);
+            this._timer = setInterval(() => {
+              this.setState(st => {
+                const p = st.progress + 0.7;
+                if (p >= 100) { clearInterval(this._timer); return { progress: 100, playing: false }; }
+                return { progress: p };
+              });
+            }, 90);
+          }
+        } else {
+          clearInterval(this._timer);
+          this._audio.pause();
+        }
+        this.setState({ playing });
+      },
 
       prevHymn: () => {
         const idx = this.HYMNS.findIndex(h => h.id === this.state.current?.id);
         if (idx > 0) {
-          clearInterval(this._timer);
+          this._stopAudio();
           this.setState({ current: this.HYMNS[idx - 1], pageIndex: 0, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
         }
       },
@@ -177,7 +225,7 @@ export class App {
       nextHymn: () => {
         const idx = this.HYMNS.findIndex(h => h.id === this.state.current?.id);
         if (idx < this.HYMNS.length - 1) {
-          clearInterval(this._timer);
+          this._stopAudio();
           this.setState({ current: this.HYMNS[idx + 1], pageIndex: 0, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
         }
       },

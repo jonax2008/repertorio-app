@@ -123,26 +123,34 @@ export const CATEGORIES = [
 
 export const CAT_COLOR = Object.fromEntries(CATEGORIES.map(c => [c.name, c.color]));
 
-// PDFs disponibles (por título exacto → ruta relativa desde index.html)
-const PDFS = {
-  "A Él Oíd y Recibid": "assets/A El Oid y Recibid.pdf",
-};
+// IDs de himnos que tienen partitura PDF disponible en assets/himnos/{id}/partitura.pdf
+const HAS_PDF = new Set([1]);
 
-export const HYMNS = RAW.map((r, i) => ({
-  id: i + 1,
-  title:    r[0],
-  page:     r[1],
-  category: r[2],
-  pdf:      PDFS[r[0]] || null,
-  color:    CAT_COLOR[r[2]] || "#1d2a5c",
-  arreglos: ARREGLOS[i % ARREGLOS.length],
-  autor:    AUTORES[(i * 3) % AUTORES.length],
-  tempo:    60 + ((i * 11) % 72),
-  compas:   COMPASES[i % COMPASES.length],
-  voces:    ["Soprano", "Contralto", "Tenor", "Bajo", "Ensamble"],
-  youtube:  null,   // URL a video-partitura cuando esté disponible
-  audios:   [],     // { voice, url } cuando estén disponibles
-}));
+// IDs de himnos que tienen audios por voz en assets/himnos/{id}/{voz}.mp3
+const HAS_AUDIO = new Set([1]);
+
+const VOICES = ["soprano", "contralto", "tenor", "bajo", "ensamble"];
+
+export const HYMNS = RAW.map((r, i) => {
+  const id = i + 1;
+  return {
+    id,
+    title:    r[0],
+    page:     r[1],
+    category: r[2],
+    pdf:      HAS_PDF.has(id) ? `assets/himnos/${id}/partitura.pdf` : null,
+    color:    CAT_COLOR[r[2]] || "#1d2a5c",
+    arreglos: ARREGLOS[i % ARREGLOS.length],
+    autor:    AUTORES[(i * 3) % AUTORES.length],
+    tempo:    60 + ((i * 11) % 72),
+    compas:   COMPASES[i % COMPASES.length],
+    voces:    ["Soprano", "Contralto", "Tenor", "Bajo", "Ensamble"],
+    youtube:  null,
+    audios:   HAS_AUDIO.has(id)
+                ? VOICES.map(v => ({ voice: v, url: `assets/himnos/${id}/${v}.mp3` }))
+                : [],
+  };
+});
 
 /** Normaliza texto para búsqueda: minúsculas sin acentos */
 export function norm(s) {

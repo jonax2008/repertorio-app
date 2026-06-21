@@ -111,6 +111,7 @@ export class App {
   mount() {
     this.root.innerHTML = `
       <div class="loading-screen" id="loading">
+        <img class="loading-screen__logo" src="assets/icons/icon-192.png" alt="ORFEONES">
         <div class="loading-screen__title">ORFEONES</div>
         <div class="loading-screen__sub">Cargando repertorio…</div>
       </div>

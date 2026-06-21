@@ -44,6 +44,13 @@ button { font-family: inherit; }
   color: var(--navy);
 }
 
+.loading-screen__logo {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  margin-bottom: 4px;
+}
+
 .loading-screen__title {
   font-family: 'Cormorant Garamond', serif;
   font-size: 30px;

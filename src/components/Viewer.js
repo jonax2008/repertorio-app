@@ -215,7 +215,7 @@ export class Viewer extends Component {
         <div class="viewer-center">
           <div class="viewer-title">${v.hymn.title}</div>
           <div class="viewer-meta">
-            ${v.hymn.category} · pág. ${v.hymn.page} · ${v.hymn.compas} · ♩=${v.hymn.tempo}
+            ${v.hymn.category}
           </div>
         </div>
         <button class="viewer-btn viewer-btn--icon" id="v-fav" aria-label="Favorito">
@@ -317,7 +317,6 @@ export class Viewer extends Component {
           <div class="voice-selector">${voicesHtml}</div>
         </div>
         ${this._controlsRow(v)}
-        ${this._hymnNav(v)}
       </div>
     `;
   }
@@ -347,6 +346,9 @@ export class Viewer extends Component {
   _controlsRow(v) {
     return `
       <div class="controls-row">
+        <button class="page-nav-btn" id="v-prev-hymn" ${!v.prev ? 'disabled' : ''} aria-label="Himno anterior">
+          ${PREV_ICON}
+        </button>
         <div class="page-nav">
           <button class="page-nav-btn" id="v-prev-page" ${!v.canPrevPage ? 'disabled' : ''}>
             ${PREV_ICON}
@@ -367,18 +369,8 @@ export class Viewer extends Component {
         <button class="viewer-btn viewer-btn--icon${this._audioOpen ? ' active' : ''}" id="v-audio-toggle" aria-label="Guías de audio">
           ${HEADPHONES_ICON}
         </button>
-      </div>
-    `;
-  }
-
-  _hymnNav(v) {
-    return `
-      <div class="hymn-nav">
-        <button class="hymn-nav-btn" id="v-prev-hymn" ${!v.prev ? 'disabled' : ''}>
-          ${PREV_ICON}<span>${v.prev ? v.prev.title : '—'}</span>
-        </button>
-        <button class="hymn-nav-btn" id="v-next-hymn" ${!v.next ? 'disabled' : ''}>
-          <span>${v.next ? v.next.title : '—'}</span>${NEXT_ICON}
+        <button class="page-nav-btn" id="v-next-hymn" ${!v.next ? 'disabled' : ''} aria-label="Himno siguiente">
+          ${NEXT_ICON}
         </button>
       </div>
     `;
@@ -435,6 +427,30 @@ export class Viewer extends Component {
     this.$$('.voice-btn').forEach(btn => {
       btn.addEventListener('click', () => this.actions.setVoice(btn.dataset.voice));
     });
+
+    this._bindSwipe();
+  }
+
+  _bindSwipe() {
+    const sheet = this.$('.viewer-sheet');
+    if (!sheet) return;
+
+    let startX = 0;
+    let startY = 0;
+
+    sheet.addEventListener('touchstart', e => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    }, { passive: true });
+
+    sheet.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      // Ignorar si el gesto es más vertical que horizontal (scroll)
+      if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+      if (dx < 0) this.actions.nextPage();
+      else        this.actions.prevPage();
+    }, { passive: true });
   }
 
   // ── Parches DOM dirigidos ─────────────────────────────────────────

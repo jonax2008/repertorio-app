@@ -152,10 +152,55 @@ Comportamiento implementado en `src/components/Viewer.js → _loadAndRenderPage(
 - El canvas se escala automáticamente para ajustarse al área visible (`fitScale = min(cw/w, ch/h) * zoom`).
 - Cambio de página con **deslizamiento horizontal** (izquierda/derecha) mediante clases CSS
   `.slide-from-right` / `.slide-from-left` — evoca pasar hojas del repertorio físico.
+- Cambio de página también con **gesto swipe horizontal** (`touchstart` / `touchend`) sobre el área de partitura.
 - Modo escenario: `filter: invert(0.9) hue-rotate(180deg) brightness(1.05)` sobre el canvas.
 - Número real de páginas: PDF.js reporta `pdfDoc.numPages` al estado global via `setPdfPageCount()`.
 - Render parcial: el canvas **no** se destruye en actualizaciones de audio (progreso cada 90 ms);
   solo se re-renderiza cuando cambia la página, el zoom o el modo oscuro.
+
+### Estructura del Visor — zonas de la UI (crítico para no confundirlas)
+
+```
+┌──────────────────────────────────────────┐
+│  viewer-topbar  (← Índice | título | ☆ ☾)│  oculta en fullscreen
+├──────────────────────────────────────────┤
+│                                          │
+│         viewer-sheet                     │  ocupa todo el espacio restante
+│   ┌──────────────────────────────────┐   │
+│   │  [‹]  canvas/placeholder  [›]   │   │  sheet-page-btn: SOLO en bordes izq/der
+│   │       (hover para ver botones)  │   │  z-index 6 — aparecen con :hover
+│   └──────────────────────────────────┘   │
+│   viewer-fs-overlay (solo PDF + solo FS) │  esquina sup-der: botón "salir FS"
+│                                          │
+├──────────────────────────────────────────┤
+│  viewer-bottom                           │  SIEMPRE visible (también en fullscreen,
+│    audio-panel (colapsable con 🎧)       │  con fondo oscuro traslúcido en ese modo)
+│    controls-row:                         │
+│      [‹himno]  N/total  [-][%][+] [⤢][🎧] [himno›]
+└──────────────────────────────────────────┘
+```
+
+**Reglas de UX inamovibles del visor:**
+1. Los **botones de cambio de página** (`#v-prev-page`, `#v-next-page`) viven SIEMPRE en los
+   **bordes izquierdo y derecho de la partitura** (`sheet-page-btn`), visibles solo al hacer hover.
+   Están en AMBAS vistas: normal y fullscreen. **Nunca en la controls-row.**
+2. La **controls-row** NO tiene botones de página. Solo muestra la etiqueta `N / total` entre los
+   botones de himno anterior/siguiente, y a su lado los controles de zoom, fullscreen y audio.
+3. En **modo fullscreen** (`viewer--fullscreen`): la topbar se oculta; la viewer-bottom permanece
+   pero con estilo glass oscuro (`rgba(0,0,0,.52)` + `backdrop-filter: blur(12px)`); aparece el
+   `viewer-fs-overlay` (solo esquina superior derecha, con el botón de salir).
+4. **Esc** sale del fullscreen (listener en `document`, limpiado al cerrar el visor).
+
+### Routing por hash (URL)
+
+| URL | Estado |
+|-----|--------|
+| `#` | Índice (visor cerrado) |
+| `#himno/{id}` | Visor abierto, vista normal |
+| `#himno/{id}/fs` | Visor abierto, modo fullscreen |
+
+El estado `fullscreen` vive en `App.state` (no en el Viewer). La navegación con el botón atrás
+del navegador detecta el popstate y actualiza el estado automáticamente.
 
 ---
 
@@ -183,8 +228,12 @@ El demo es una SPA sin framework ni bundler:
 | Lógica | Vanilla JS · ES6 modules (`type="module"`) · clases ES6 como componentes |
 | PDF | **PDF.js 3.11.174** · CDN (`cdnjs.cloudflare.com`) · acceso como `window.pdfjsLib` |
 | Estado | Objeto central en `App` · método `setState()` · sin reactividad externa |
+| Routing | Hash-based: `#himno/{id}` / `#himno/{id}/fs` · `history.pushState` + `popstate` |
+| Audio | `new Audio()` en App · real con `HTMLAudioElement` · fallback simulado para himnos sin URL |
 | Favoritos | `localStorage` · clave `orfeones.favs` · objeto `{ [id]: true }` |
+| PWA iOS | Banner informativo (`InstallBanner.js`) · dismissible · persiste en `localStorage` |
 | Servidor local | `python3 -m http.server <puerto>` (sin bundler, ES modules nativos) |
+| Deploy | **Cloudflare Pages** — sin build step, sirve estáticos directamente desde `main` |
 
 > **No hay `node_modules`, `package.json` ni paso de build.** Abrir directamente con servidor HTTP.
 
@@ -212,18 +261,19 @@ Cuando el demo se escale a la app real, migrar a:
 repertorio-app/
 ├── index.html                      # Contenedor mínimo; carga PDF.js CDN + main.css + main.js
 ├── src/
-│   ├── main.js                     # Punto de entrada: instancia App y llama mount()
+│   ├── main.js                     # Punto de entrada: instancia App, mount(), mountInstallBanner()
 │   ├── styles/
 │   │   └── main.css                # Tokens CSS + todos los estilos de la app
 │   ├── data/
 │   │   └── hymns.js                # 85 himnos · 10 categorías · función norm() para búsqueda
 │   └── components/
 │       ├── Component.js            # Clase base: render(vm) → html(vm) + bind(vm)
-│       ├── App.js                  # Controlador central: estado, acciones, view-model, orquestación
+│       ├── App.js                  # Controlador central: estado, routing, acciones, view-model
 │       ├── Header.js               # Cabecera fija con logo, título y contador
 │       ├── Toolbar.js              # Buscador + botón favoritos + chips de categoría
 │       ├── HymnIndex.js            # Cuadrícula de cards A-Z + riel lateral
-│       └── Viewer.js               # Visor a pantalla completa con PDF.js + audio + nav
+│       ├── Viewer.js               # Visor a pantalla completa con PDF.js + audio + nav
+│       └── InstallBanner.js        # Banner de instalación PWA para iOS (Safari)
 └── assets/
     └── A El Oid y Recibid.pdf      # Único PDF real disponible en el demo
 ```
@@ -244,6 +294,21 @@ component.bind(vm) → event listeners (o delegación registrada una sola vez)
 `Viewer.js` sobreescribe `render()` directamente para aplicar **actualizaciones parciales** del DOM
 en lugar de destruir y recrear el canvas en cada tick de audio.
 
+### App.state — campos relevantes
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `current` | `Hymn\|null` | Himno abierto en el visor |
+| `fullscreen` | `boolean` | Modo pantalla completa del visor |
+| `dark` | `boolean` | Modo escenario (inversión de color) |
+| `zoom` | `number` | Zoom del PDF (0.6–2.4, default 1) |
+| `pageIndex` | `number` | Página actual del PDF (0-based) |
+| `pdfPageCount` | `number\|null` | Total de páginas (reportado async por PDF.js) |
+| `voice` | `string` | Voz activa del audio guía |
+| `playing` | `boolean` | Estado del reproductor |
+| `progress` | `number` | Progreso del audio 0–100 |
+| `favs` | `object` | `{ [id]: true }` persistido en localStorage |
+
 ### Acciones disponibles (App._buildActions)
 
 | Acción | Descripción |
@@ -253,13 +318,15 @@ en lugar de destruir y recrear el canvas en cada tick de audio.
 | `setCat(c)` | Filtra por categoría (null = todas) |
 | `toggleFavOnly()` | Alterna filtro de favoritos |
 | `toggleFav(id)` | Marca/desmarca favorito y persiste en localStorage |
-| `openViewer(hymn)` | Abre el visor y resetea estado de página/audio |
+| `openViewer(hymn)` | Abre el visor y resetea estado (fullscreen siempre a false) |
 | `closeViewer()` | Cierra el visor |
+| `toggleFullscreen()` | Alterna fullscreen; actualiza hash a `#himno/{id}/fs` o `#himno/{id}` |
+| `exitFullscreen()` | Sale del fullscreen; actualiza hash a `#himno/{id}` |
 | `toggleDark()` | Alterna modo escenario |
-| `setVoice(v)` | Cambia voz del reproductor de audio |
-| `togglePlay()` | Play/pausa del reproductor simulado |
-| `prevHymn()` / `nextHymn()` | Navega al himno anterior/siguiente |
-| `prevPage()` / `nextPage()` | Cambia página del PDF (usa `pdfPageCount` real) |
+| `setVoice(v)` | Cambia voz y reproduce audio real si hay URL |
+| `togglePlay()` | Play/pausa; usa audio real si hay URL, sino simulado |
+| `prevHymn()` / `nextHymn()` | Navega al himno anterior/siguiente; preserva fullscreen en hash |
+| `prevPage()` / `nextPage()` | Cambia página del PDF (usa `pdfPageCount` real de PDF.js) |
 | `zoomIn()` / `zoomOut()` | Zoom ±0.2 (rango 0.6–2.4) |
 | `setPdfPageCount(n)` | Llamado por Viewer cuando PDF.js carga el documento |
 
@@ -271,6 +338,17 @@ en lugar de destruir y recrear el canvas en cada tick de audio.
 - **Acceso en JS**: `window.pdfjsLib` (global UMD)
 - **Para producción**: instalar `pdfjs-dist` via npm y servir el worker como asset estático
   (Vite copia `pdfjs-dist/build/pdf.worker.min.js` al bundle).
+
+### InstallBanner.js — Banner PWA para iOS
+
+Chrome en iOS/iPadOS **no** soporta el evento `beforeinstallprompt`. Para guiar a los usuarios
+a instalar la app desde Safari:
+
+- Detecta iOS/iPadOS (incluyendo iPadOS 13+ que reporta `MacIntel` con `maxTouchPoints > 1`).
+- No muestra el banner si ya está en modo standalone (PWA ya instalada).
+- Persistencia de descarte: `localStorage` clave `orfeones.pwa-banner-dismissed`.
+- La función `mountInstallBanner()` es standalone — no es un componente de App, se llama
+  directamente desde `main.js` después de `app.mount()`.
 
 ---
 

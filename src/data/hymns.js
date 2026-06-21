@@ -129,6 +129,11 @@ const HAS_PDF = new Set([1]);
 // IDs de himnos que tienen audios por voz en assets/himnos/{id}/{voz}.mp3
 const HAS_AUDIO = new Set([1]);
 
+// Links de YouTube por id de himno
+const YOUTUBE = {
+  1: 'https://youtu.be/SeGrNM95DqI?si=m_1WUe8Dr1CCS67X',
+};
+
 const VOICES = ["soprano", "contralto", "tenor", "bajo", "ensamble"];
 
 export const HYMNS = RAW.map((r, i) => {
@@ -145,7 +150,7 @@ export const HYMNS = RAW.map((r, i) => {
     tempo:    60 + ((i * 11) % 72),
     compas:   COMPASES[i % COMPASES.length],
     voces:    ["Soprano", "Contralto", "Tenor", "Bajo", "Ensamble"],
-    youtube:  null,
+    youtube:  YOUTUBE[id] || null,
     audios:   HAS_AUDIO.has(id)
                 ? VOICES.map(v => ({ voice: v, url: `assets/himnos/${id}/${v}.mp3` }))
                 : [],

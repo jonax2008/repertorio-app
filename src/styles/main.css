@@ -624,6 +624,57 @@ button { font-family: inherit; }
 .slide-from-right { animation: slide-from-right 0.22s ease-out; }
 .slide-from-left  { animation: slide-from-left  0.22s ease-out; }
 
+/* ── Overlay page-turn buttons ─────────────────────────────────── */
+.sheet-page-btn {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s;
+}
+.sheet-page-btn--prev { left: 0; }
+.sheet-page-btn--next { right: 0; }
+
+.viewer-sheet:hover .sheet-page-btn:not([disabled]) {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sheet-page-btn[disabled] { opacity: 0 !important; pointer-events: none; }
+
+.sheet-page-btn-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(22, 34, 77, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  color: #fff;
+  transition: background .15s, transform .12s;
+}
+.sheet-page-btn:hover .sheet-page-btn-icon {
+  background: rgba(22, 34, 77, 0.85);
+  transform: scale(1.1);
+}
+.viewer.dark .sheet-page-btn-icon {
+  background: rgba(255, 255, 255, 0.15);
+}
+.viewer.dark .sheet-page-btn:hover .sheet-page-btn-icon {
+  background: rgba(255, 255, 255, 0.28);
+}
+
 /* Placeholder score sheet */
 .sheet-placeholder {
   background: var(--paper);

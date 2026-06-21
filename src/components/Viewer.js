@@ -230,10 +230,21 @@ export class Viewer extends Component {
 
   // ── Sheet ─────────────────────────────────────────────────────────
   _sheet(v) {
+    const pageOverlay = `
+      <button class="sheet-page-btn sheet-page-btn--prev" id="v-prev-page"
+        ${!v.canPrevPage ? 'disabled' : ''} aria-label="Página anterior">
+        <span class="sheet-page-btn-icon">${PREV_ICON}</span>
+      </button>
+      <button class="sheet-page-btn sheet-page-btn--next" id="v-next-page"
+        ${!v.canNextPage ? 'disabled' : ''} aria-label="Página siguiente">
+        <span class="sheet-page-btn-icon">${NEXT_ICON}</span>
+      </button>
+    `;
     if (v.hasPdf) {
       return `
         <div class="viewer-sheet">
           <canvas id="pdf-canvas"></canvas>
+          ${pageOverlay}
           ${this._fsOverlay(v)}
         </div>
       `;
@@ -243,6 +254,7 @@ export class Viewer extends Component {
         <div id="sheet-wrap" style="width:${v.sheetW}px; flex:none; filter:${v.sheetFilter}">
           ${this._placeholderSheet(v)}
         </div>
+        ${pageOverlay}
       </div>
     `;
   }
@@ -349,15 +361,7 @@ export class Viewer extends Component {
         <button class="page-nav-btn" id="v-prev-hymn" ${!v.prev ? 'disabled' : ''} aria-label="Himno anterior">
           ${PREV_ICON}
         </button>
-        <div class="page-nav">
-          <button class="page-nav-btn" id="v-prev-page" ${!v.canPrevPage ? 'disabled' : ''}>
-            ${PREV_ICON}
-          </button>
-          <span class="page-nav-label">${v.pageNum} / ${v.pageCount}</span>
-          <button class="page-nav-btn" id="v-next-page" ${!v.canNextPage ? 'disabled' : ''}>
-            ${NEXT_ICON}
-          </button>
-        </div>
+        <span class="page-nav-label">${v.pageNum} / ${v.pageCount}</span>
         <div class="zoom-controls">
           <button class="zoom-btn" id="v-zoom-out">${MINUS_ICON}</button>
           <span class="zoom-label">${Math.round(v.zoom * 100)}%</span>
@@ -474,7 +478,7 @@ export class Viewer extends Component {
   _patchPageNav(v) {
     const prevBtn = this.$('#v-prev-page');
     const nextBtn = this.$('#v-next-page');
-    const lbl     = this.$('.controls-row .page-nav-label');
+    const lbl     = this.$('.controls-row > .page-nav-label');
     if (prevBtn) prevBtn.disabled = !v.canPrevPage;
     if (nextBtn) nextBtn.disabled = !v.canNextPage;
     if (lbl)     lbl.textContent  = `${v.pageNum} / ${v.pageCount}`;

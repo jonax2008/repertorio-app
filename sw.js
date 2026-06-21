@@ -1,4 +1,4 @@
-const CACHE_VER = 'v1';
+const CACHE_VER = 'v2';
 const CACHE_SHELL = `orfeones-shell-${CACHE_VER}`;
 const CACHE_FONTS = `orfeones-fonts-${CACHE_VER}`;
 const CACHE_CDN   = `orfeones-cdn-${CACHE_VER}`;
@@ -15,17 +15,33 @@ const SHELL_ASSETS = [
   './src/components/Toolbar.js',
   './src/components/HymnIndex.js',
   './src/components/Viewer.js',
+  './src/components/InstallBanner.js',
   './src/data/hymns.js',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
 ];
 
+// Safari rechaza respuestas con response.redirected=true servidas por el SW.
+// Esta función reconstruye la respuesta sin el flag de redirección.
+async function fetchNoRedirect(request) {
+  const response = await fetch(request);
+  if (!response.redirected) return response;
+  const body = await response.blob();
+  return new Response(body, { status: 200, headers: response.headers });
+}
+
 // ── Install: pre-cachear la shell ──────────────────────────────────────────
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_SHELL)
-      .then(cache => cache.addAll(SHELL_ASSETS))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_SHELL).then(cache =>
+      Promise.all(
+        SHELL_ASSETS.map(url =>
+          fetchNoRedirect(url)
+            .then(r => { if (r.ok) cache.put(url, r); })
+            .catch(e => console.warn('[SW] No se pudo cachear:', url, e))
+        )
+      )
+    ).then(() => self.skipWaiting())
   );
 });
 
@@ -46,7 +62,18 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Google Fonts → stale-while-revalidate (permite actualizar fuentes)
+  // Navegación SPA → servir index.html del caché directamente.
+  // Evita que Cloudflare Pages u otro servidor devuelva un redirect
+  // que Safari rechazaría al ser servido por el SW.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      caches.match('./index.html', { cacheName: CACHE_SHELL })
+        .then(r => r || fetch(request))
+    );
+    return;
+  }
+
+  // Google Fonts → stale-while-revalidate
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
     event.respondWith(staleWhileRevalidate(CACHE_FONTS, request));
     return;
@@ -80,7 +107,7 @@ async function cacheFirst(cacheName, request) {
   const cached = await cache.match(request);
   if (cached) return cached;
   try {
-    const response = await fetch(request);
+    const response = await fetchNoRedirect(request);
     if (response.ok) cache.put(request, response.clone());
     return response;
   } catch {
@@ -91,7 +118,7 @@ async function cacheFirst(cacheName, request) {
 async function staleWhileRevalidate(cacheName, request) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
-  const networkFetch = fetch(request)
+  const networkFetch = fetchNoRedirect(request)
     .then(response => {
       if (response.ok) cache.put(request, response.clone());
       return response;

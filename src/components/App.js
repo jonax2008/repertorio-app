@@ -33,6 +33,7 @@ export class App {
       pdfPageCount: null,      // número real de páginas del PDF cargado
       zoom:         1,
       dark:         false,
+      fullscreen:   false,
       voice:        'Ensamble',
       playing:      false,
       progress:     0,
@@ -71,32 +72,37 @@ export class App {
 
   // ─── Routing ─────────────────────────────────────────────────────
 
-  /** Devuelve el id de himno codificado en el hash, o null. */
+  /** Devuelve { id, fs } del hash, o null. */
   _hymnIdFromHash() {
-    const m = location.hash.match(/^#himno\/(\d+)$/);
-    return m ? parseInt(m[1], 10) : null;
+    const m = location.hash.match(/^#himno\/(\d+)(\/fs)?$/);
+    return m ? { id: parseInt(m[1], 10), fs: !!m[2] } : null;
   }
 
   /** Actualiza el hash sin disparar hashchange artificial. */
-  _setHash(hymn) {
-    const next = hymn ? `#himno/${hymn.id}` : '#';
+  _setHash(hymn, fullscreen = false) {
+    const next = hymn ? `#himno/${hymn.id}${fullscreen ? '/fs' : ''}` : '#';
     if (location.hash !== next) history.pushState(null, '', next);
   }
 
   /** Reacciona al hash actual: abre el himno correspondiente o cierra el visor. */
   _applyRoute() {
-    const id = this._hymnIdFromHash();
-    if (id !== null) {
+    const parsed = this._hymnIdFromHash();
+    if (parsed !== null) {
+      const { id, fs } = parsed;
       const hymn = this.HYMNS.find(h => h.id === id);
-      if (hymn && this.state.current?.id !== id) {
-        this._stopAudio();
-        this.setState({ current: hymn, pageIndex: 0, pdfPageCount: null, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
+      if (hymn) {
+        if (this.state.current?.id !== id) {
+          this._stopAudio();
+          this.setState({ current: hymn, pageIndex: 0, pdfPageCount: null, progress: 0, playing: false, voice: 'Ensamble', zoom: 1, fullscreen: fs });
+        } else if (this.state.fullscreen !== fs) {
+          this.setState({ fullscreen: fs });
+        }
         return;
       }
     }
-    if (!id && this.state.current) {
+    if (!parsed && this.state.current) {
       this._stopAudio();
-      this.setState({ current: null, playing: false });
+      this.setState({ current: null, playing: false, fullscreen: false });
     }
   }
 
@@ -147,10 +153,13 @@ export class App {
     this._mainEl.style.display    = '';
 
     // Restaurar vista desde URL antes del primer render
-    const initId = this._hymnIdFromHash();
-    if (initId !== null) {
-      const hymn = this.HYMNS.find(h => h.id === initId);
-      if (hymn) this.state.current = hymn;
+    const initParsed = this._hymnIdFromHash();
+    if (initParsed !== null) {
+      const hymn = this.HYMNS.find(h => h.id === initParsed.id);
+      if (hymn) {
+        this.state.current    = hymn;
+        this.state.fullscreen = initParsed.fs;
+      }
     }
 
     this._update();
@@ -199,8 +208,19 @@ export class App {
 
       openViewer: (hymn) => {
         this._stopAudio();
-        this._setHash(hymn);
-        this.setState({ current: hymn, pageIndex: 0, pdfPageCount: null, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
+        this._setHash(hymn, false);
+        this.setState({ current: hymn, pageIndex: 0, pdfPageCount: null, progress: 0, playing: false, voice: 'Ensamble', zoom: 1, fullscreen: false });
+      },
+
+      toggleFullscreen: () => {
+        const isFs = !this.state.fullscreen;
+        this._setHash(this.state.current, isFs);
+        this.setState({ fullscreen: isFs });
+      },
+
+      exitFullscreen: () => {
+        this._setHash(this.state.current, false);
+        this.setState({ fullscreen: false });
       },
 
       setPdfPageCount: (n) => this.setState({ pdfPageCount: n }),
@@ -260,7 +280,7 @@ export class App {
         const idx = this.HYMNS.findIndex(h => h.id === this.state.current?.id);
         if (idx > 0) {
           this._stopAudio();
-          this._setHash(this.HYMNS[idx - 1]);
+          this._setHash(this.HYMNS[idx - 1], this.state.fullscreen);
           this.setState({ current: this.HYMNS[idx - 1], pageIndex: 0, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
         }
       },
@@ -269,7 +289,7 @@ export class App {
         const idx = this.HYMNS.findIndex(h => h.id === this.state.current?.id);
         if (idx < this.HYMNS.length - 1) {
           this._stopAudio();
-          this._setHash(this.HYMNS[idx + 1]);
+          this._setHash(this.HYMNS[idx + 1], this.state.fullscreen);
           this.setState({ current: this.HYMNS[idx + 1], pageIndex: 0, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
         }
       },
@@ -353,6 +373,7 @@ export class App {
         pdfUrl:     hasPdf ? cur.pdf + '#view=FitH&toolbar=0' : '',
         isFav:      !!S.favs[cur.id],
         dark:       S.dark,
+        fullscreen: S.fullscreen,
         sheetFilter: S.dark ? 'invert(0.9) hue-rotate(180deg) brightness(1.05)' : 'none',
         sheetW:     Math.round(640 * S.zoom),
         zoom:       S.zoom,

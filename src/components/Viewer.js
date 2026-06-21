@@ -90,13 +90,13 @@ const COMPRESS_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="non
 export class Viewer extends Component {
   constructor(el, actions) {
     super(el);
-    this.actions    = actions;
+    this.actions      = actions;
     this._pdfDoc      = null;
     this._pdfUrl      = null;
     this._prevVm      = null;
     this._renderN     = 0;
     this._audioOpen   = false;
-    this._fullscreen  = false;
+    this._escHandler  = null;
   }
 
   render(vm) {
@@ -115,6 +115,10 @@ export class Viewer extends Component {
       this._pdfUrl       = null;
       this._prevVm       = null;
       this._audioOpen    = false;
+      if (this._escHandler) {
+        document.removeEventListener('keydown', this._escHandler);
+        this._escHandler = null;
+      }
       return;
     }
 
@@ -123,7 +127,7 @@ export class Viewer extends Component {
 
     // ── Render completo: primera apertura o cambio de himno ──────────
     if (!wasOpen || hymnChanged) {
-      this.el.className  = `viewer open${v.dark ? ' dark' : ''}${this._fullscreen ? ' viewer--fullscreen' : ''}`;
+      this.el.className  = `viewer open${v.dark ? ' dark' : ''}${v.fullscreen ? ' viewer--fullscreen' : ''}`;
       this.el.innerHTML  = this._html(v);
       this._bindAll(v);
       if (v.hasPdf) this._loadAndRenderPage(v, null);
@@ -132,7 +136,14 @@ export class Viewer extends Component {
     }
 
     // ── Actualizaciones parciales ────────────────────────────────────
-    this.el.className = `viewer open${v.dark ? ' dark' : ''}${this._fullscreen ? ' viewer--fullscreen' : ''}`;
+    this.el.className = `viewer open${v.dark ? ' dark' : ''}${v.fullscreen ? ' viewer--fullscreen' : ''}`;
+
+    // Fullscreen — clase ya actualizada; sincronizar icono y re-render PDF
+    if (prev.fullscreen !== v.fullscreen) {
+      const btn = this.$('#v-fullscreen');
+      if (btn) btn.innerHTML = v.fullscreen ? COMPRESS_ICON : EXPAND_ICON;
+      if (v.hasPdf) requestAnimationFrame(() => this._loadAndRenderPage(v, null));
+    }
 
     // Modo oscuro — clase ya actualizada; sincronizar icono y filtro
     if (prev.dark !== v.dark) {
@@ -265,25 +276,6 @@ export class Viewer extends Component {
         <button class="viewer-fs-exit" id="v-exit-fs" aria-label="Salir de pantalla completa">
           ${COMPRESS_ICON}
         </button>
-        <div class="viewer-fs-bottom">
-          <div class="viewer-fs-page-nav">
-            <button class="page-nav-btn" id="v-fs-prev-page" ${!v.canPrevPage ? 'disabled' : ''}>
-              ${PREV_ICON}
-            </button>
-            <span class="page-nav-label">${v.pageNum} / ${v.pageCount}</span>
-            <button class="page-nav-btn" id="v-fs-next-page" ${!v.canNextPage ? 'disabled' : ''}>
-              ${NEXT_ICON}
-            </button>
-          </div>
-          <div class="viewer-fs-hymn-nav">
-            <button class="hymn-nav-btn" id="v-fs-prev-hymn" ${!v.prev ? 'disabled' : ''}>
-              ${PREV_ICON}<span>${v.prev ? v.prev.title : '—'}</span>
-            </button>
-            <button class="hymn-nav-btn" id="v-fs-next-hymn" ${!v.next ? 'disabled' : ''}>
-              <span>${v.next ? v.next.title : '—'}</span>${NEXT_ICON}
-            </button>
-          </div>
-        </div>
       </div>
     `;
   }
@@ -368,7 +360,7 @@ export class Viewer extends Component {
           <button class="zoom-btn" id="v-zoom-in">${PLUS_ICON}</button>
         </div>
         <button class="viewer-btn viewer-btn--icon" id="v-fullscreen" aria-label="Pantalla completa">
-          ${EXPAND_ICON}
+          ${v.fullscreen ? COMPRESS_ICON : EXPAND_ICON}
         </button>
         <button class="viewer-btn viewer-btn--icon${this._audioOpen ? ' active' : ''}" id="v-audio-toggle" aria-label="Guías de audio">
           ${HEADPHONES_ICON}
@@ -397,28 +389,18 @@ export class Viewer extends Component {
     on('v-zoom-out',     () => this.actions.zoomOut());
     on('v-prev-hymn',    () => this.actions.prevHymn());
     on('v-next-hymn',    () => this.actions.nextHymn());
-    on('v-fullscreen', () => {
-      this._fullscreen = !this._fullscreen;
-      this.el.classList.toggle('viewer--fullscreen', this._fullscreen);
-      const btn = this.$('#v-fullscreen');
-      if (btn) btn.innerHTML = this._fullscreen ? COMPRESS_ICON : EXPAND_ICON;
-      if (this.vm?.viewer?.hasPdf)
-        requestAnimationFrame(() => this._loadAndRenderPage(this.vm.viewer, null));
-    });
+    on('v-fullscreen', () => this.actions.toggleFullscreen());
+    on('v-exit-fs',    () => this.actions.exitFullscreen());
 
-    on('v-exit-fs', () => {
-      this._fullscreen = false;
-      this.el.classList.remove('viewer--fullscreen');
-      const btn = this.$('#v-fullscreen');
-      if (btn) btn.innerHTML = EXPAND_ICON;
-      if (this.vm?.viewer?.hasPdf)
-        requestAnimationFrame(() => this._loadAndRenderPage(this.vm.viewer, null));
-    });
+    this._escHandler = (e) => {
+      if (e.key === 'Escape' && this.vm?.viewer?.fullscreen) {
+        this.actions.exitFullscreen();
+      }
+    };
+    document.addEventListener('keydown', this._escHandler);
 
-    on('v-fs-prev-page',  () => this.actions.prevPage());
-    on('v-fs-next-page',  () => this.actions.nextPage());
-    on('v-fs-prev-hymn',  () => this.actions.prevHymn());
-    on('v-fs-next-hymn',  () => this.actions.nextHymn());
+    on('v-prev-page',     () => this.actions.prevPage());
+    on('v-next-page',     () => this.actions.nextPage());
 
     on('v-audio-toggle', () => {
       this._audioOpen = !this._audioOpen;
@@ -482,13 +464,6 @@ export class Viewer extends Component {
     if (prevBtn) prevBtn.disabled = !v.canPrevPage;
     if (nextBtn) nextBtn.disabled = !v.canNextPage;
     if (lbl)     lbl.textContent  = `${v.pageNum} / ${v.pageCount}`;
-
-    const fsPrev = this.$('#v-fs-prev-page');
-    const fsNext = this.$('#v-fs-next-page');
-    const fsLbl  = this.$('.viewer-fs-page-nav .page-nav-label');
-    if (fsPrev) fsPrev.disabled = !v.canPrevPage;
-    if (fsNext) fsNext.disabled = !v.canNextPage;
-    if (fsLbl)  fsLbl.textContent = `${v.pageNum} / ${v.pageCount}`;
   }
 
   // ── PDF.js: carga y render de página ─────────────────────────────

@@ -1095,3 +1095,80 @@ button { font-family: inherit; }
   .header-edition { display: none; }
   .header-sep { display: none; }
 }
+
+/* ===== iOS PWA INSTALL BANNER ===== */
+.install-banner {
+  position: fixed;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  left: 16px;
+  right: 16px;
+  z-index: 9999;
+  background: var(--navy);
+  color: #fff;
+  border-radius: var(--r-card);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 24px rgba(22,34,77,.35);
+  animation: banner-slide-up .3s ease;
+}
+
+@keyframes banner-slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.install-banner--hiding {
+  animation: banner-slide-down .25s ease forwards;
+}
+
+@keyframes banner-slide-down {
+  to { opacity: 0; transform: translateY(20px); }
+}
+
+.install-banner__icon {
+  flex: none;
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+}
+
+.install-banner__text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255,255,255,.9);
+}
+
+.install-banner__text strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.install-banner__share-icon {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 2px;
+  position: relative;
+  top: -1px;
+}
+
+.install-banner__close {
+  flex: none;
+  background: rgba(255,255,255,.12);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,.8);
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.install-banner__close:hover {
+  background: rgba(255,255,255,.22);
+}

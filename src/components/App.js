@@ -69,6 +69,37 @@ export class App {
     this._currentAudioUrl = null;
   }
 
+  // ─── Routing ─────────────────────────────────────────────────────
+
+  /** Devuelve el id de himno codificado en el hash, o null. */
+  _hymnIdFromHash() {
+    const m = location.hash.match(/^#himno\/(\d+)$/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  /** Actualiza el hash sin disparar hashchange artificial. */
+  _setHash(hymn) {
+    const next = hymn ? `#himno/${hymn.id}` : '#';
+    if (location.hash !== next) history.pushState(null, '', next);
+  }
+
+  /** Reacciona al hash actual: abre el himno correspondiente o cierra el visor. */
+  _applyRoute() {
+    const id = this._hymnIdFromHash();
+    if (id !== null) {
+      const hymn = this.HYMNS.find(h => h.id === id);
+      if (hymn && this.state.current?.id !== id) {
+        this._stopAudio();
+        this.setState({ current: hymn, pageIndex: 0, pdfPageCount: null, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
+        return;
+      }
+    }
+    if (!id && this.state.current) {
+      this._stopAudio();
+      this.setState({ current: null, playing: false });
+    }
+  }
+
   // ─── Ciclo de vida ───────────────────────────────────────────────
 
   mount() {
@@ -87,6 +118,8 @@ export class App {
 
     this._loadingEl = this.root.querySelector('#loading');
     this._mainEl    = this.root.querySelector('#app-main');
+
+    window.addEventListener('popstate', () => this._applyRoute());
 
     this._loadData();
   }
@@ -112,6 +145,13 @@ export class App {
 
     this._loadingEl.style.display = 'none';
     this._mainEl.style.display    = '';
+
+    // Restaurar vista desde URL antes del primer render
+    const initId = this._hymnIdFromHash();
+    if (initId !== null) {
+      const hymn = this.HYMNS.find(h => h.id === initId);
+      if (hymn) this.state.current = hymn;
+    }
 
     this._update();
   }
@@ -159,6 +199,7 @@ export class App {
 
       openViewer: (hymn) => {
         this._stopAudio();
+        this._setHash(hymn);
         this.setState({ current: hymn, pageIndex: 0, pdfPageCount: null, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
       },
 
@@ -166,6 +207,7 @@ export class App {
 
       closeViewer: () => {
         this._stopAudio();
+        this._setHash(null);
         this.setState({ current: null, playing: false });
       },
 
@@ -218,6 +260,7 @@ export class App {
         const idx = this.HYMNS.findIndex(h => h.id === this.state.current?.id);
         if (idx > 0) {
           this._stopAudio();
+          this._setHash(this.HYMNS[idx - 1]);
           this.setState({ current: this.HYMNS[idx - 1], pageIndex: 0, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
         }
       },
@@ -226,6 +269,7 @@ export class App {
         const idx = this.HYMNS.findIndex(h => h.id === this.state.current?.id);
         if (idx < this.HYMNS.length - 1) {
           this._stopAudio();
+          this._setHash(this.HYMNS[idx + 1]);
           this.setState({ current: this.HYMNS[idx + 1], pageIndex: 0, progress: 0, playing: false, voice: 'Ensamble', zoom: 1 });
         }
       },
